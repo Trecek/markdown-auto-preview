@@ -5,7 +5,7 @@
   "description": "Automatically preview Markdown with Github styling.",
   "version": "0.3.4",
   "engines": {
-    "vscode": "^1.77.0"
+    "vscode": "^1.82.0"
   },
   "categories": [
     "Other"
@@ -172,27 +172,26 @@
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
-    "lint": "eslint src --ext ts",
+    "lint": "eslint src",
     "test": "node ./out/test/runTest.js",
     "generate-css": "node ./styles/generate-github-css.mjs"
   },
   "devDependencies": {
-    "@types/glob": "^8.1.0",
     "@types/markdown-it": "^14.1.2",
     "@types/mocha": "^10.0.1",
-    "@types/node": "16.x",
-    "@types/vscode": "^1.77.0",
-    "@typescript-eslint/eslint-plugin": "^5.59.1",
-    "@typescript-eslint/parser": "^5.59.1",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.82.0",
+    "typescript-eslint": "^8.0.0",
     "@vscode/test-electron": "^2.3.0",
-    "eslint": "^8.39.0",
-    "glob": "^8.1.0",
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "glob": "^13.0.6",
     "markdown-it": "^14.1.1",
-    "mocha": "^10.2.0",
+    "mocha": "^11.0.0",
     "ts-loader": "^9.4.2",
-    "typescript": "^5.0.4",
+    "typescript": "^5.9.3",
     "webpack": "^5.81.0",
-    "webpack-cli": "^5.0.2"
+    "webpack-cli": "^6.0.1"
   },
   "dependencies": {
     "generate-github-markdown-css": "^5.1.0",

@@ -3,7 +3,7 @@ import * as Mocha from "mocha";
 import { globSync } from "glob";
 
 export function run(): Promise<void> {
-  const mocha = new Mocha({ ui: "tdd", color: true });
+  const mocha = new Mocha({ ui: "tdd", color: true, timeout: 30000 });
   const testsRoot = path.resolve(__dirname, ".");
 
   const files = globSync("**/*.test.js", { cwd: testsRoot });

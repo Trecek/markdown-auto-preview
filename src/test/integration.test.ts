@@ -73,6 +73,12 @@ suite("Integration - Preview Behavior", function () {
     await openMarkdownFile(uriA);
     await waitForMarkdownPreview("test-switch-a");
 
+    // autoPreviewToSide is still completing its focus-restoration step
+    // (showTextDocument) after the preview tab appears. Wait for it to
+    // fully finish before switching files to avoid a race condition
+    // where file A's focus restoration cancels file B's debounce timer.
+    await sleep(500);
+
     // Switch to file B — the extension should trigger autoPreviewToSide.
     // VS Code's locked preview may either open a new tab labeled with
     // file B's name or reuse the existing tab (label may not update).

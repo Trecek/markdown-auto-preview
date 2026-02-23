@@ -192,6 +192,7 @@
     "webpack-cli": "^5.0.2"
   },
   "dependencies": {
-    "generate-github-markdown-css": "^5.1.0"
+    "generate-github-markdown-css": "^5.1.0",
+    "markdown-it-github-alerts": "1.0.1"
   }
 }

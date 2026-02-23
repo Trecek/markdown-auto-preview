@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import * as path from "path";
 import { closePreview } from "../helpers";
 
 let _autoCloseDisposable: vscode.Disposable | null = null;
@@ -12,15 +11,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
   configEffect();
 
-  // Auto-close Preview
-  const autoClosePreview = vscode.workspace
-    .getConfiguration("markdown-auto-preview")
-    .get<boolean>("autoClosePreviewWindow");
-  if (autoClosePreview) {
-    registerAutoClose();
-  }
-
-  context.subscriptions.push(d1, _autoCloseDisposable!);
+  context.subscriptions.push(d1);
   return {};
 }
 

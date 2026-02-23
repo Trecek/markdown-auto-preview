@@ -3,9 +3,10 @@ import { closePreview } from "../helpers";
 import { isAllowedScheme } from "./autoPreview";
 
 let autoCloseDebounce: ReturnType<typeof setTimeout> | undefined;
-let lastDoc: vscode.TextDocument | undefined;
+let lastMarkdownFilePath: string | undefined;
 
-let _autoCloseDisposable: vscode.Disposable | null = null;
+let _switchDisposable: vscode.Disposable | null = null;
+let _docCloseDisposable: vscode.Disposable | null = null;
 
 export function activate(context: vscode.ExtensionContext) {
   const d1 = vscode.workspace.onDidChangeConfiguration((e) => {
@@ -23,18 +24,34 @@ function configEffect() {
   if (vscode.workspace.getConfiguration("markdown-auto-preview").get<boolean>("autoClosePreviewAfterSwitch")) {
     registerAutoCloseAfterSwitch();
   } else {
-    _autoCloseDisposable?.dispose?.();
-    _autoCloseDisposable = null;
+    _switchDisposable?.dispose();
+    _switchDisposable = null;
+    _docCloseDisposable?.dispose();
+    _docCloseDisposable = null;
+    lastMarkdownFilePath = undefined;
   }
 }
 
 function registerAutoCloseAfterSwitch() {
-  if (_autoCloseDisposable) {
+  if (_switchDisposable) {
     return;
   }
 
-  _autoCloseDisposable = vscode.window.onDidChangeActiveTextEditor((editor) => triggerAutoClosePreview(editor));
+  _switchDisposable = vscode.window.onDidChangeActiveTextEditor(
+    (editor) => triggerAutoClosePreview(editor)
+  );
+
+  _docCloseDisposable = vscode.workspace.onDidCloseTextDocument((doc) => {
+    if (doc.languageId === "markdown" && doc.fileName === lastMarkdownFilePath) {
+      lastMarkdownFilePath = undefined;
+      if (autoCloseDebounce) {
+        clearTimeout(autoCloseDebounce);
+        autoCloseDebounce = undefined;
+      }
+    }
+  });
 }
+
 // VS Code dispatches a series of DidChangeActiveTextEditor events when moving tabs between groups, we don't want most of them.
 function triggerAutoClosePreview(editor: vscode.TextEditor | undefined): void {
   if (!editor || editor.viewColumn !== 1) {
@@ -46,18 +63,20 @@ function triggerAutoClosePreview(editor: vscode.TextEditor | undefined): void {
   }
 
   const doc = editor.document;
-  if (editor.document.languageId !== "markdown" && lastDoc?.languageId === "markdown") {
+  const isMarkdown = doc.languageId === "markdown";
+
+  if (!isMarkdown && lastMarkdownFilePath) {
     if (autoCloseDebounce) {
       clearTimeout(autoCloseDebounce);
       autoCloseDebounce = undefined;
     }
 
-    if (lastDoc && doc !== lastDoc) {
-      const filename = lastDoc.fileName;
-      autoCloseDebounce = setTimeout(() => closePreview(filename), 100);
-    }
+    const filePath = lastMarkdownFilePath;
+    lastMarkdownFilePath = undefined;
+    autoCloseDebounce = setTimeout(() => closePreview(filePath), 100);
   }
-  if (doc !== lastDoc) {
-    lastDoc = doc;
+
+  if (isMarkdown) {
+    lastMarkdownFilePath = doc.fileName;
   }
 }

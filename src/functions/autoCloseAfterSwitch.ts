@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { closePreview } from "../helpers";
+import { isAllowedScheme } from "./autoPreview";
 
 let autoCloseDebounce: ReturnType<typeof setTimeout> | undefined;
 let lastDoc: vscode.TextDocument | undefined;
@@ -14,7 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
   configEffect();
 
-  context.subscriptions.push(d1, _autoCloseDisposable!);
+  context.subscriptions.push(d1);
   return {};
 }
 
@@ -40,7 +41,11 @@ function triggerAutoClosePreview(editor: vscode.TextEditor | undefined): void {
     return;
   }
 
-  const doc = editor?.document;
+  if (!isAllowedScheme(editor.document.uri.scheme)) {
+    return;
+  }
+
+  const doc = editor.document;
   if (editor.document.languageId !== "markdown" && lastDoc?.languageId === "markdown") {
     if (autoCloseDebounce) {
       clearTimeout(autoCloseDebounce);

@@ -1,12 +1,46 @@
 import * as vscode from "vscode";
 
+// --- Testable pure functions (Step 1) ---
+
+const ALLOWED_SCHEMES = new Set(["file", "untitled"]);
+
+export function isAllowedScheme(scheme: string): boolean {
+  return ALLOWED_SCHEMES.has(scheme);
+}
+
+export function isMarkdownPreviewTab(viewType: string): boolean {
+  return viewType.includes("markdown.preview");
+}
+
+export function shouldTriggerPreview(
+  docUri: string,
+  previewShownForUri: string | undefined,
+  lastClosedPreviewForUri: string | undefined,
+  previewClosedAt: number,
+  now: number = Date.now()
+): boolean {
+  if (lastClosedPreviewForUri === docUri && now - previewClosedAt < 500) {
+    return false;
+  }
+  if (docUri === previewShownForUri) {
+    return false;
+  }
+  return true;
+}
+
+// --- Module state (Step 2) ---
+
 let autoPreviewDebounce: ReturnType<typeof setTimeout> | undefined;
-let lastDoc: vscode.TextDocument | undefined;
+let previewShownForUri: string | undefined;
+let lastClosedPreviewForUri: string | undefined;
+let previewClosedAt = 0;
 
 let _autoPreviewDisposable: vscode.Disposable | null = null;
+let _tabChangeDisposable: vscode.Disposable | null = null;
+
+// --- Activation (Step 4) ---
 
 export function activate(context: vscode.ExtensionContext) {
-  // Register auto preview. And try showing preview on activation.
   const d1 = vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration("markdown-auto-preview")) {
       configEffect();
@@ -14,10 +48,10 @@ export function activate(context: vscode.ExtensionContext) {
   });
   configEffect();
 
-  // Keep code tidy.
-  context.subscriptions.push(d1, _autoPreviewDisposable!);
+  context.subscriptions.push(d1);
   return {};
 }
+
 function configEffect() {
   if (vscode.workspace.getConfiguration("markdown-auto-preview").get<boolean>("autoShowPreviewToSide")) {
     registerAutoPreview();
@@ -25,23 +59,51 @@ function configEffect() {
   } else {
     _autoPreviewDisposable?.dispose?.();
     _autoPreviewDisposable = null;
+    _tabChangeDisposable?.dispose?.();
+    _tabChangeDisposable = null;
   }
 }
+
+// --- Registration (Step 4) ---
 
 function registerAutoPreview() {
   if (_autoPreviewDisposable) {
     return;
   }
-  _autoPreviewDisposable = vscode.window.onDidChangeActiveTextEditor((editor) => triggerAutoPreview(editor));
+
+  _autoPreviewDisposable = vscode.window.onDidChangeActiveTextEditor(
+    (editor) => triggerAutoPreview(editor)
+  );
+
+  _tabChangeDisposable = vscode.window.tabGroups.onDidChangeTabs(
+    (event) => {
+      for (const tab of event.closed) {
+        if (
+          tab.input instanceof vscode.TabInputWebview &&
+          isMarkdownPreviewTab(tab.input.viewType)
+        ) {
+          lastClosedPreviewForUri = previewShownForUri;
+          previewClosedAt = Date.now();
+          previewShownForUri = undefined;
+          break;
+        }
+      }
+    }
+  );
 }
 
-// VS Code dispatches a series of DidChangeActiveTextEditor events when moving tabs between groups, we don't want most of them.
+// --- Core logic (Step 3) ---
+
 function triggerAutoPreview(editor: vscode.TextEditor | undefined): void {
   if (!editor || editor.viewColumn !== 1) {
     return;
   }
+
+  if (!isAllowedScheme(editor.document.uri.scheme)) {
+    return;
+  }
+
   if (editor.document.languageId !== "markdown") {
-    lastDoc = undefined;
     return;
   }
 
@@ -50,11 +112,16 @@ function triggerAutoPreview(editor: vscode.TextEditor | undefined): void {
     autoPreviewDebounce = undefined;
   }
 
-  const doc = editor.document;
-  if (doc !== lastDoc) {
-    lastDoc = doc;
-    autoPreviewDebounce = setTimeout(() => autoPreviewToSide(editor), 100);
+  const docUri = editor.document.uri.toString();
+
+  if (!shouldTriggerPreview(docUri, previewShownForUri, lastClosedPreviewForUri, previewClosedAt)) {
+    lastClosedPreviewForUri = undefined;
+    return;
   }
+  lastClosedPreviewForUri = undefined;
+
+  previewShownForUri = docUri;
+  autoPreviewDebounce = setTimeout(() => autoPreviewToSide(editor), 100);
 }
 
 /**

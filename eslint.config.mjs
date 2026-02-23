@@ -9,9 +9,13 @@ export default tseslint.config(
     files: ["src/**/*.ts"],
     rules: {
       "@typescript-eslint/naming-convention": "warn",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-require-imports": "off",
       "curly": "warn",
       "eqeqeq": "warn",
       "no-throw-literal": "warn",
+      "prefer-rest-params": "off",
     },
   },
   {

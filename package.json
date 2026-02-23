@@ -33,6 +33,7 @@
       "./styles/github-markdown-dark-colorblind.css",
       "./styles/github-markdown-dark-tritanopia.css",
       "./styles/github-markdown-dark-high-contrast.css",
+      "./styles/github-alerts.css",
       "./styles/highlight-js.css"
     ],
     "commands": [],

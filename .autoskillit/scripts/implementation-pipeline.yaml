@@ -1,0 +1,158 @@
+name: implementation-pipeline
+description: Plan, verify, implement, test, and merge a task end-to-end. Optionally decompose a large document into sequenced groups first. Use when user says "run pipeline", "implement task", or "auto implement".
+summary: (make-groups?) > make-plan > (review-approach?) > dry-walkthrough > implement > test > merge (per group, per plan part)
+
+inputs:
+  task:
+    description: Description of what to implement (required when make_groups is false)
+    required: false
+  source_doc:
+    description: Path to source document for group decomposition (required when make_groups is true)
+    required: false
+  project_dir:
+    description: Path to the project
+    default: /home/talon/projects/my-markdown-preview-app
+  work_dir:
+    description: Working directory (can be same as project_dir)
+    default: /home/talon/projects/my-markdown-preview-app
+  base_branch:
+    description: Branch to merge into
+    default: main
+  make_groups:
+    description: Run /make-groups to decompose source_doc into sequenced implementation groups? (true/false)
+    default: "false"
+  review_approach:
+    description: Run /review-approach before implementation? (true/false)
+    default: "false"
+
+steps:
+  group:
+    tool: run_skill
+    with:
+      skill_command: "/autoskillit:make-groups ${{ inputs.source_doc }}"
+      cwd: "${{ inputs.work_dir }}"
+    capture:
+      groups_path: "${{ result.groups_path }}"
+    on_success: plan
+    on_failure: escalate
+    note: >
+      Only execute if make_groups input is 'true'. Otherwise skip directly to plan.
+      Produces per-group files in temp/make-groups/ (groupA_*.md, groupB_*.md, ...).
+      ITERATION: The agent maintains a group queue. For each group, run the full cycle
+      (plan → review → verify → implement → test → merge) before advancing to the next group.
+      The current group's file path becomes the task passed to the plan step.
+
+  plan:
+    tool: run_skill
+    with:
+      skill_command: "/autoskillit:make-plan ${{ inputs.task }}"
+      cwd: "${{ inputs.work_dir }}"
+    capture:
+      plan_path: "${{ result.plan_path }}"
+    on_success: review
+    on_failure: escalate
+    note: >
+      Produces plan in temp/make-plan/. Glob plan_dir for *_part_*.md or single plan file.
+      Sort alphabetically into plan_parts[].
+      GROUPS MODE: When running with groups, replace ${{ inputs.task }} with the path to
+      the current group's file (e.g., temp/make-groups/groupA_*.md).
+
+  review:
+    tool: run_skill
+    with:
+      skill_command: "/autoskillit:review-approach ${{ context.plan_path }}"
+      cwd: "${{ inputs.work_dir }}"
+    on_success: verify
+    on_failure: escalate
+    note: "Only execute this step if review_approach input is 'true'. Otherwise skip directly to verify."
+
+  verify:
+    tool: run_skill
+    with:
+      skill_command: "/autoskillit:dry-walkthrough ${{ context.plan_path }}"
+      cwd: "${{ inputs.work_dir }}"
+    on_success: implement
+    on_failure: escalate
+    note: "Run for each plan_part sequentially. If review produced a report, pass it as additional arg."
+
+  implement:
+    tool: run_skill_retry
+    with:
+      skill_command: "/autoskillit:implement-worktree-no-merge ${{ context.plan_path }}"
+      cwd: "${{ inputs.work_dir }}"
+    capture:
+      worktree_path: "${{ result.worktree_path }}"
+    on_success: test
+    on_failure: escalate
+    retry:
+      max_attempts: 3
+      on: needs_retry
+      on_exhausted: retry_worktree
+    note: "Extracts worktree_path from result for use in subsequent steps."
+
+  retry_worktree:
+    tool: run_skill_retry
+    with:
+      skill_command: "/autoskillit:retry-worktree ${{ context.plan_path }} ${{ context.worktree_path }}"
+      cwd: "${{ inputs.work_dir }}"
+    on_success: test
+    on_failure: escalate
+    retry:
+      max_attempts: 3
+      on: needs_retry
+      on_exhausted: escalate
+
+  test:
+    tool: test_check
+    with:
+      worktree_path: "${{ context.worktree_path }}"
+    on_success: merge
+    on_failure: fix
+
+  merge:
+    tool: merge_worktree
+    with:
+      worktree_path: "${{ context.worktree_path }}"
+      base_branch: "${{ inputs.base_branch }}"
+    on_success: next_or_done
+    on_failure: escalate
+    note: >
+      After merge, continue to next plan_part (back to verify step) if more parts remain.
+      GROUPS MODE: When all plan_parts for the current group are merged, advance to the
+      next group (back to plan step with the next group's description). When all groups
+      are complete, go to done.
+
+  fix:
+    tool: run_skill
+    with:
+      skill_command: "/autoskillit:assess-and-merge ${{ context.worktree_path }} ${{ context.plan_path }} ${{ inputs.base_branch }}"
+      cwd: "${{ inputs.work_dir }}"
+    on_success: next_or_done
+    on_failure: escalate
+    retry:
+      max_attempts: 3
+      on: needs_retry
+      on_exhausted: escalate
+    note: "Attempts to fix test failures and merge. After 3 failed attempts, escalates."
+
+  next_or_done:
+    action: route
+    note: >
+      Routing step — no tool call. The agent evaluates what comes next:
+      1. If more plan_parts remain for the current group → go to verify with next part.
+      2. If all plan_parts done but more groups remain → go to plan with next group's task.
+      3. If all groups (or single task) complete → go to done.
+
+  done:
+    action: stop
+    message: "Implementation pipeline complete. All groups/tasks have been planned, implemented, tested, and merged."
+
+  escalate:
+    action: stop
+    message: "Pipeline failed — human intervention needed. Check the worktree and plan for details."
+
+constraints:
+  - "Only use AutoSkillit MCP tools during pipeline execution. Do not use native Read, Grep, Glob, Edit, Write, Bash, or Task tools directly."
+  - "When a step fails, follow the on_failure route. Do not investigate or diagnose failures yourself — the downstream skill handles diagnosis."
+  - "Thread outputs between steps using captured context variables. Do not hardcode paths or values."
+  - "When test_check returns passed=false, route to fix. Do not run tests yourself or attempt direct repairs."

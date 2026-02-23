@@ -1,0 +1,11 @@
+test_check:
+  command: ["pnpm", "run", "test"]
+
+classify_fix:
+  path_prefixes:
+    - src/extension.ts
+    - src/functions/index.ts
+    - src/helpers.ts
+    - package.json
+    - webpack.config.js
+    - tsconfig.json

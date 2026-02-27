@@ -24,7 +24,6 @@ interface ZoomState { scale: number; tx: number; ty: number; }
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 10;
 // Log-scale step: Math.exp(LOG_ZOOM_STEP) ≈ 1.051× per rAF frame.
-// Replaces the old multiplicative ZOOM_STEP = 0.1 (≈10% per wheel notch).
 const LOG_ZOOM_STEP = 0.05;
 
 // Per-diagram zoom state. Keyed by the .mermaid container element, which is

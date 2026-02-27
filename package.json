@@ -34,6 +34,7 @@
       "./styles/github-markdown-dark-tritanopia.css",
       "./styles/github-markdown-dark-high-contrast.css",
       "./styles/github-alerts.css",
+      "./styles/mermaid.css",
       "./styles/highlight-js.css"
     ],
     "commands": [],

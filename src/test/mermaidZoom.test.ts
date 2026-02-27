@@ -174,4 +174,43 @@ suite("Mermaid Scroll-Wheel Zoom", () => {
       "Expected flushZoom function for rAF flush of batched wheel events"
     );
   });
+
+  // ── Zoom sensitivity fix ───────────────────────────────────────────────────
+
+  test("PIXELS_PER_NOTCH constant declared for deltaY normalization", () => {
+    const src = fs.readFileSync(
+      path.join(root, "src/preview/mermaidExpand.ts"), "utf8"
+    );
+    assert.ok(src.includes("PIXELS_PER_NOTCH"), "PIXELS_PER_NOTCH constant must exist");
+  });
+
+  test("wheel handler reads deltaMode to normalize across device types", () => {
+    const src = fs.readFileSync(
+      path.join(root, "src/preview/mermaidExpand.ts"), "utf8"
+    );
+    assert.ok(
+      src.includes("deltaMode"),
+      "wheel handler must inspect we.deltaMode for delta normalization"
+    );
+  });
+
+  test("flushZoom uses magnitude of accumulated delta, not just sign", () => {
+    const src = fs.readFileSync(
+      path.join(root, "src/preview/mermaidExpand.ts"), "utf8"
+    );
+    assert.ok(
+      src.includes("PIXELS_PER_NOTCH") && (src.includes("/ PIXELS_PER_NOTCH") || src.includes("/PIXELS_PER_NOTCH")),
+      "flushZoom must divide by PIXELS_PER_NOTCH to scale step proportionally to delta magnitude"
+    );
+  });
+
+  test("sign-only direction variable is removed from flushZoom", () => {
+    const src = fs.readFileSync(
+      path.join(root, "src/preview/mermaidExpand.ts"), "utf8"
+    );
+    assert.ok(
+      !src.includes("direction = delta < 0"),
+      "sign-only direction assignment must be removed — magnitude is now used"
+    );
+  });
 });

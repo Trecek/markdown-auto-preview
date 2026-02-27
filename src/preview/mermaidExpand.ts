@@ -23,8 +23,13 @@ interface ZoomState { scale: number; tx: number; ty: number; }
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 10;
-// Log-scale step: Math.exp(LOG_ZOOM_STEP) ≈ 1.051× per rAF frame.
+// Log-scale zoom exponent per one standard scroll notch (PIXELS_PER_NOTCH px of deltaY).
+// Math.exp(0.05) ≈ 1.051× per notch — small, perceptible-but-subtle zoom increment.
 const LOG_ZOOM_STEP = 0.05;
+// Expected pixel-equivalent deltaY for one standard mouse wheel notch (DOM_DELTA_PIXEL mode).
+// Used to normalize accumulated delta before computing the zoom exponent, so that the
+// step is device-agnostic and rAF-timing-independent.
+const PIXELS_PER_NOTCH = 100;
 
 // Per-diagram zoom state. Keyed by the .mermaid container element, which is
 // stable across morphdom re-renders (morphdom patches SVG children, not
@@ -161,12 +166,14 @@ function flushZoom(container: Element): void {
   if (delta === 0) { return; }
 
   const state = zoomStateMap.get(container) ?? { scale: 1, tx: 0, ty: 0 };
-  const direction = delta < 0 ? 1 : -1; // negative deltaY = scroll up = zoom in
 
-  // Log-scale step: exp(log(scale) ± step) gives perceptually-equal zoom increments.
+  // Proportional zoom: scale the exponent by normalized delta magnitude.
+  // Splitting one physical notch across N rAF frames produces N smaller steps that
+  // multiply to the same total as a single batched step (log-scale additivity).
+  const normalizedSteps = delta / PIXELS_PER_NOTCH;
   const newScale = Math.max(
     MIN_SCALE,
-    Math.min(MAX_SCALE, Math.exp(Math.log(state.scale) + direction * LOG_ZOOM_STEP))
+    Math.min(MAX_SCALE, Math.exp(Math.log(state.scale) + normalizedSteps * LOG_ZOOM_STEP))
   );
 
   // Cursor-centered translate: keep the diagram point under the cursor fixed.
@@ -181,6 +188,18 @@ function flushZoom(container: Element): void {
   zoomStateMap.set(container, newState);
   applyZoom(container, newState);
   updateZoomResetBtn(container, newState);
+}
+
+/**
+ * Normalize a wheel event's deltaY to a pixel-equivalent value.
+ * DOM_DELTA_PIXEL (0) is already in pixels; LINE (1) and PAGE (2) are converted
+ * using conventional ratios so that one physical notch always contributes
+ * approximately PIXELS_PER_NOTCH normalized pixels regardless of device or OS.
+ */
+function normalizeWheelDelta(deltaY: number, deltaMode: number): number {
+  if (deltaMode === 1 /* DOM_DELTA_LINE */) { return deltaY * (PIXELS_PER_NOTCH / 3); }
+  if (deltaMode === 2 /* DOM_DELTA_PAGE */) { return deltaY * PIXELS_PER_NOTCH; }
+  return deltaY; // DOM_DELTA_PIXEL — already in pixels
 }
 
 /**
@@ -208,7 +227,10 @@ function attachZoom(container: Element): void {
 
     // Accumulate deltaY — multiple wheel notches before the next animation frame
     // will be batched into a single flushZoom call.
-    pendingDeltaMap.set(container, (pendingDeltaMap.get(container) ?? 0) + we.deltaY);
+    pendingDeltaMap.set(
+      container,
+      (pendingDeltaMap.get(container) ?? 0) + normalizeWheelDelta(we.deltaY, we.deltaMode)
+    );
 
     // Track the latest cursor position for cursor-centered zoom in flushZoom.
     pendingCursorMap.set(container, { clientX: we.clientX, clientY: we.clientY });

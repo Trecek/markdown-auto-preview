@@ -17,6 +17,21 @@ const observedSet = new WeakSet<Element>();
 // Single active keydown handler reference for cleanup on overlay close.
 let activeCloseHandler: ((e: KeyboardEvent) => void) | null = null;
 
+// ── Zoom state ────────────────────────────────────────────────────────────────
+
+interface ZoomState { scale: number; tx: number; ty: number; }
+
+const MIN_SCALE = 0.5;
+const MAX_SCALE = 10;
+const ZOOM_STEP = 0.1;
+
+// Per-diagram zoom state. Keyed by the .mermaid container element, which is
+// stable across morphdom re-renders (morphdom patches SVG children, not
+// the container itself). Satisfies REQ-ZOOM-006 and REQ-ZOOM-008.
+const zoomStateMap = new Map<Element, ZoomState>();
+
+// ── Scan + observe ────────────────────────────────────────────────────────────
+
 /** Scan the document for .mermaid containers and set up observers on new ones. */
 function scanAndObserve(): void {
   document.querySelectorAll<Element>(".mermaid").forEach(observeMermaidContainer);
@@ -34,6 +49,9 @@ function observeMermaidContainer(el: Element): void {
   // Mermaid may have already rendered synchronously (e.g. cached).
   if (el.querySelector("svg")) {
     attachExpandButton(el);
+    attachZoom(el);              // attach wheel-based zoom
+    attachZoomResetButton(el);   // inject reset button
+    reapplyZoom(el);             // re-apply any saved zoom to the initial SVG
   }
 
   // Watch for async SVG insertion. Do NOT disconnect after first fire:
@@ -42,10 +60,16 @@ function observeMermaidContainer(el: Element): void {
   const observer = new MutationObserver(() => {
     if (el.querySelector("svg")) {
       attachExpandButton(el);
+      attachZoomResetButton(el); // re-attach if morphdom removed it
+      reapplyZoom(el);           // re-apply saved zoom to replaced SVG
+      // attachZoom is NOT called here: the wheel listener is bound to the stable
+      // container element and data-zoom-attached prevents re-registration.
     }
   });
   observer.observe(el, { childList: true, subtree: true });
 }
+
+// ── Expand button ─────────────────────────────────────────────────────────────
 
 /**
  * Attach the expand button to a .mermaid container.
@@ -74,6 +98,117 @@ function attachExpandButton(container: Element): void {
 
   container.appendChild(btn);
 }
+
+// ── Zoom helpers ──────────────────────────────────────────────────────────────
+
+/** Apply the given zoom state to the SVG element inside container. */
+function applyZoom(container: Element, state: ZoomState): void {
+  const svg = container.querySelector<SVGElement>("svg");
+  if (!svg) { return; }
+  svg.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
+  svg.style.transformOrigin = "0 0";
+  // Clear mermaid's inline max-width constraint (mermaid-js#5038) which would
+  // clip the SVG when scaled beyond its natural width.
+  svg.style.maxWidth = "";
+  const isZoomed = state.scale !== 1 || state.tx !== 0 || state.ty !== 0;
+  (container as HTMLElement).style.overflow = isZoomed ? "hidden" : "";
+}
+
+/**
+ * Re-apply saved zoom state after morphdom replaces the SVG element.
+ * Called from the MutationObserver callback on every SVG re-insertion.
+ */
+function reapplyZoom(container: Element): void {
+  const state = zoomStateMap.get(container);
+  if (state) { applyZoom(container, state); }
+}
+
+/** Reset zoom to 1× and clear the saved state for the container. */
+function resetZoom(container: Element): void {
+  const cleared: ZoomState = { scale: 1, tx: 0, ty: 0 };
+  zoomStateMap.set(container, cleared);
+  applyZoom(container, cleared);
+  updateZoomResetBtn(container, cleared);
+}
+
+/** Toggle .mermaid-is-zoomed on the container so CSS can show/hide the reset button. */
+function updateZoomResetBtn(container: Element, state: ZoomState): void {
+  const isZoomed = state.scale !== 1 || state.tx !== 0 || state.ty !== 0;
+  container.classList.toggle("mermaid-is-zoomed", isZoomed);
+}
+
+/**
+ * Attach the Ctrl+scroll wheel zoom handler to a .mermaid container.
+ *
+ * Guards:
+ *  1. Bierner conflict: if .mermaid-zoom-button is present, skip (same as
+ *     attachExpandButton) to avoid conflicting with bierner's zoom controls.
+ *  2. Own dedup: data-zoom-attached prevents registering multiple listeners
+ *     on the same container across updateContent cycles.
+ */
+function attachZoom(container: Element): void {
+  if (container.querySelector(".mermaid-zoom-button") !== null) { return; }
+  if ((container as HTMLElement).dataset.zoomAttached === "true") { return; }
+  (container as HTMLElement).dataset.zoomAttached = "true";
+
+  if (!zoomStateMap.has(container)) {
+    zoomStateMap.set(container, { scale: 1, tx: 0, ty: 0 });
+  }
+
+  container.addEventListener("wheel", (e: Event) => {
+    const we = e as WheelEvent;
+    if (!we.ctrlKey) { return; } // REQ-ZOOM-003: pass plain scroll through
+    we.preventDefault();         // Capture zoom gesture; suppress page scroll
+
+    const state = zoomStateMap.get(container) ?? { scale: 1, tx: 0, ty: 0 };
+    const direction = we.deltaY < 0 ? 1 : -1;
+    const newScale = Math.max(
+      MIN_SCALE,
+      Math.min(MAX_SCALE, state.scale * (1 + direction * ZOOM_STEP))
+    );
+
+    // Cursor-centered translate: maintain the diagram point under the cursor.
+    const rect = (container as HTMLElement).getBoundingClientRect();
+    const cursorX = we.clientX - rect.left;
+    const cursorY = we.clientY - rect.top;
+    const ratio = newScale / state.scale;
+    const tx = cursorX - (cursorX - state.tx) * ratio;
+    const ty = cursorY - (cursorY - state.ty) * ratio;
+
+    const newState: ZoomState = { scale: newScale, tx, ty };
+    zoomStateMap.set(container, newState);
+    applyZoom(container, newState);
+    updateZoomResetBtn(container, newState);
+  }, { passive: false });
+}
+
+/**
+ * Attach the zoom reset button to a .mermaid container.
+ *
+ * Guards:
+ *  1. Bierner conflict: skip if .mermaid-zoom-button is present.
+ *  2. Own dedup: skip if our button is already present.
+ */
+function attachZoomResetButton(container: Element): void {
+  if (container.querySelector(".mermaid-zoom-button") !== null) { return; }
+  if (container.querySelector(".mermaid-zoom-reset-btn") !== null) { return; }
+
+  const btn = document.createElement("button");
+  btn.className = "mermaid-zoom-reset-btn";
+  btn.setAttribute("aria-label", "Reset zoom");
+  btn.setAttribute("title", "Reset zoom");
+  btn.setAttribute("type", "button");
+  btn.textContent = "1×";
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    resetZoom(container);
+  });
+
+  container.appendChild(btn);
+}
+
+// ── Overlay ───────────────────────────────────────────────────────────────────
 
 /**
  * Open the fullscreen overlay containing a clone of the given SVG.
@@ -118,6 +253,8 @@ function closeOverlay(): void {
     activeCloseHandler = null;
   }
 }
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 // Initial scan — handle both early and late script execution.
 if (document.readyState === "loading") {

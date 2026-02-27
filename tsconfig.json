@@ -8,5 +8,6 @@
 		"sourceMap": true,
 		"rootDir": "src",
 		"strict": true
-	}
+	},
+	"exclude": ["src/preview"]
 }

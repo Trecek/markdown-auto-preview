@@ -21,6 +21,9 @@
   "icon": "icon.jpg",
   "contributes": {
     "markdown.markdownItPlugins": true,
+    "markdown.previewScripts": [
+      "./dist/preview.js"
+    ],
     "markdown.previewStyles": [
       "./styles/base.css",
       "./styles/github-markdown-theme-base.css",
@@ -34,6 +37,8 @@
       "./styles/github-markdown-dark-tritanopia.css",
       "./styles/github-markdown-dark-high-contrast.css",
       "./styles/github-alerts.css",
+      "./styles/mermaid.css",
+      "./styles/mermaid-expand.css",
       "./styles/highlight-js.css"
     ],
     "commands": [],

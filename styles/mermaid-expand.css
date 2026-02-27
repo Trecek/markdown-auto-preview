@@ -31,24 +31,41 @@
   opacity: 1;
 }
 
-/* Full-panel overlay — position:fixed resolves to the preview panel viewport */
+/* Full-panel overlay — overflow:auto makes it scrollable for large diagrams */
 .mermaid-overlay {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: auto;
   z-index: 1000;
   background: var(--vscode-editor-background, rgba(0, 0, 0, 0.9));
-  display: flex;
-  align-items: center;
-  justify-content: center;
   cursor: zoom-out;
 }
 
-.mermaid-overlay svg {
-  max-width: 100%;
-  max-height: 100%;
+/*
+ * Inner centering wrapper.
+ * min-width/min-height: 100% ensures the wrapper fills the overlay when the
+ * diagram is smaller than the viewport (centering works via flex).
+ * When the diagram is larger, the wrapper grows beyond 100% and the overlay
+ * scrollbar appears automatically.
+ */
+.mermaid-overlay-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 100%;
+  min-height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.mermaid-overlay-inner svg {
+  display: block;
+  flex-shrink: 0; /* prevent flex from shrinking SVG below intrinsic size */
+  width: auto;    /* override Mermaid's width="100%" SVG attribute */
+  height: auto;
   cursor: default;
 }
 

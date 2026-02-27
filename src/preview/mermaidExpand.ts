@@ -23,12 +23,18 @@ interface ZoomState { scale: number; tx: number; ty: number; }
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 10;
-const ZOOM_STEP = 0.1;
+// Log-scale step: Math.exp(LOG_ZOOM_STEP) ≈ 1.051× per rAF frame.
+const LOG_ZOOM_STEP = 0.05;
 
 // Per-diagram zoom state. Keyed by the .mermaid container element, which is
 // stable across morphdom re-renders (morphdom patches SVG children, not
 // the container itself). Satisfies REQ-ZOOM-006 and REQ-ZOOM-008.
 const zoomStateMap = new Map<Element, ZoomState>();
+
+// rAF accumulation state — one entry per container with an in-flight rAF.
+const pendingDeltaMap = new Map<Element, number>();
+const pendingCursorMap = new Map<Element, { clientX: number; clientY: number }>();
+const pendingRafMap = new Map<Element, number>();
 
 // ── Scan + observe ────────────────────────────────────────────────────────────
 
@@ -138,6 +144,46 @@ function updateZoomResetBtn(container: Element, state: ZoomState): void {
 }
 
 /**
+ * Flush accumulated wheel delta for a container on the next animation frame.
+ *
+ * Batches multiple rapid wheel-notch events into a single visual update,
+ * eliminating stutter from per-event DOM writes. Uses log-scale stepping for
+ * perceptually-linear, symmetric zoom (equal steps in/out at all zoom levels).
+ */
+function flushZoom(container: Element): void {
+  pendingRafMap.delete(container);
+
+  const delta = pendingDeltaMap.get(container) ?? 0;
+  pendingDeltaMap.delete(container);
+  const cursor = pendingCursorMap.get(container) ?? { clientX: 0, clientY: 0 };
+  pendingCursorMap.delete(container);
+
+  if (delta === 0) { return; }
+
+  const state = zoomStateMap.get(container) ?? { scale: 1, tx: 0, ty: 0 };
+  const direction = delta < 0 ? 1 : -1; // negative deltaY = scroll up = zoom in
+
+  // Log-scale step: exp(log(scale) ± step) gives perceptually-equal zoom increments.
+  const newScale = Math.max(
+    MIN_SCALE,
+    Math.min(MAX_SCALE, Math.exp(Math.log(state.scale) + direction * LOG_ZOOM_STEP))
+  );
+
+  // Cursor-centered translate: keep the diagram point under the cursor fixed.
+  const rect = (container as HTMLElement).getBoundingClientRect();
+  const cursorX = cursor.clientX - rect.left;
+  const cursorY = cursor.clientY - rect.top;
+  const ratio = newScale / state.scale;
+  const tx = cursorX - (cursorX - state.tx) * ratio;
+  const ty = cursorY - (cursorY - state.ty) * ratio;
+
+  const newState: ZoomState = { scale: newScale, tx, ty };
+  zoomStateMap.set(container, newState);
+  applyZoom(container, newState);
+  updateZoomResetBtn(container, newState);
+}
+
+/**
  * Attach the Ctrl+scroll wheel zoom handler to a .mermaid container.
  *
  * Guards:
@@ -160,25 +206,17 @@ function attachZoom(container: Element): void {
     if (!we.ctrlKey) { return; } // REQ-ZOOM-003: pass plain scroll through
     we.preventDefault();         // Capture zoom gesture; suppress page scroll
 
-    const state = zoomStateMap.get(container) ?? { scale: 1, tx: 0, ty: 0 };
-    const direction = we.deltaY < 0 ? 1 : -1;
-    const newScale = Math.max(
-      MIN_SCALE,
-      Math.min(MAX_SCALE, state.scale * (1 + direction * ZOOM_STEP))
-    );
+    // Accumulate deltaY — multiple wheel notches before the next animation frame
+    // will be batched into a single flushZoom call.
+    pendingDeltaMap.set(container, (pendingDeltaMap.get(container) ?? 0) + we.deltaY);
 
-    // Cursor-centered translate: maintain the diagram point under the cursor.
-    const rect = (container as HTMLElement).getBoundingClientRect();
-    const cursorX = we.clientX - rect.left;
-    const cursorY = we.clientY - rect.top;
-    const ratio = newScale / state.scale;
-    const tx = cursorX - (cursorX - state.tx) * ratio;
-    const ty = cursorY - (cursorY - state.ty) * ratio;
+    // Track the latest cursor position for cursor-centered zoom in flushZoom.
+    pendingCursorMap.set(container, { clientX: we.clientX, clientY: we.clientY });
 
-    const newState: ZoomState = { scale: newScale, tx, ty };
-    zoomStateMap.set(container, newState);
-    applyZoom(container, newState);
-    updateZoomResetBtn(container, newState);
+    // Schedule a single rAF flush; ignore if one is already in flight.
+    if (!pendingRafMap.has(container)) {
+      pendingRafMap.set(container, requestAnimationFrame(() => flushZoom(container)));
+    }
   }, { passive: false });
 }
 
@@ -221,14 +259,19 @@ function openOverlay(svg: SVGElement): void {
   const overlay = document.createElement("div");
   overlay.className = "mermaid-overlay";
 
+  // Inner wrapper provides flex-centering for small diagrams while allowing
+  // the overlay to scroll for diagrams larger than the viewport.
+  const inner = document.createElement("div");
+  inner.className = "mermaid-overlay-inner";
+
   // Clone the SVG so the original in the document is unaffected (REQ-WID-005).
   const clone = svg.cloneNode(true) as SVGElement;
   clone.removeAttribute("width");
   clone.removeAttribute("height");
-  clone.style.maxWidth = "100%";
-  clone.style.maxHeight = "100%";
+  // No max-width/max-height: SVG renders at full intrinsic size; overlay scrolls.
 
-  overlay.appendChild(clone);
+  inner.appendChild(clone);
+  overlay.appendChild(inner);
   document.body.appendChild(overlay);
 
   // REQ-WID-006: dismiss on Escape key.
@@ -238,9 +281,10 @@ function openOverlay(svg: SVGElement): void {
   activeCloseHandler = onKeyDown;
   document.addEventListener("keydown", onKeyDown);
 
-  // REQ-WID-006: dismiss on click outside the SVG (on the overlay backdrop).
+  // REQ-WID-006: dismiss on click on the overlay backdrop or inner wrapper
+  // (anywhere that is NOT the SVG itself).
   overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) { closeOverlay(); }
+    if (!(e.target as Element).closest("svg")) { closeOverlay(); }
   });
 }
 

@@ -107,4 +107,48 @@ suite("Mermaid Expand Modal", () => {
       `Expected target 'web', got: ${target}`
     );
   });
+
+  // ── Overlay viewport fill (Issue 1) ───────────────────────────────────────
+
+  test("mermaid-expand.css sets overflow: auto on .mermaid-overlay", () => {
+    const css = fs.readFileSync(path.join(root, "styles/mermaid-expand.css"), "utf8");
+    // must have overflow: auto (not just display:flex centering)
+    assert.ok(
+      /\.mermaid-overlay\s*\{[^}]*overflow\s*:\s*auto/s.test(css),
+      "Expected .mermaid-overlay to have overflow: auto"
+    );
+  });
+
+  test("mermaid-expand.css defines .mermaid-overlay-inner with min-width: 100%", () => {
+    const css = fs.readFileSync(path.join(root, "styles/mermaid-expand.css"), "utf8");
+    assert.ok(
+      /\.mermaid-overlay-inner\s*\{[^}]*min-width\s*:\s*100%/s.test(css),
+      "Expected .mermaid-overlay-inner rule with min-width: 100%"
+    );
+  });
+
+  test("mermaid-expand.css defines .mermaid-overlay-inner with min-height: 100%", () => {
+    const css = fs.readFileSync(path.join(root, "styles/mermaid-expand.css"), "utf8");
+    assert.ok(
+      /\.mermaid-overlay-inner\s*\{[^}]*min-height\s*:\s*100%/s.test(css),
+      "Expected .mermaid-overlay-inner rule with min-height: 100%"
+    );
+  });
+
+  test("mermaid-expand.css does not apply max-width to .mermaid-overlay svg", () => {
+    const css = fs.readFileSync(path.join(root, "styles/mermaid-expand.css"), "utf8");
+    // The old .mermaid-overlay svg { max-width: 100%; max-height: 100%; } should be gone
+    assert.ok(
+      !/\.mermaid-overlay\s+svg\s*\{[^}]*max-width\s*:/s.test(css),
+      "Expected .mermaid-overlay svg to not constrain max-width"
+    );
+  });
+
+  test("src/preview/mermaidExpand.ts creates mermaid-overlay-inner wrapper in openOverlay", () => {
+    const src = fs.readFileSync(path.join(root, "src/preview/mermaidExpand.ts"), "utf8");
+    assert.ok(
+      src.includes("mermaid-overlay-inner"),
+      "Expected openOverlay to create an inner wrapper with class mermaid-overlay-inner"
+    );
+  });
 });

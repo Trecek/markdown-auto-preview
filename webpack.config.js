@@ -45,4 +45,35 @@ const extensionConfig = {
     level: "log", // enables logging required for problem matchers
   },
 };
-module.exports = [ extensionConfig ];
+/** @type WebpackConfig */
+const previewConfig = {
+  target: 'web',
+  mode: 'none',
+  entry: './src/preview/mermaidExpand.ts',
+  output: {
+    path: path.resolve(__dirname, 'dist'),
+    filename: 'preview.js',
+  },
+  // No vscode external — acquireVsCodeApi() is blocked in preview scripts.
+  resolve: { extensions: ['.ts', '.js'] },
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        exclude: /node_modules/,
+        use: [
+          {
+            loader: 'ts-loader',
+            options: { configFile: path.resolve(__dirname, 'tsconfig.preview.json') }
+          }
+        ]
+      }
+    ]
+  },
+  devtool: 'nosources-source-map',
+  infrastructureLogging: {
+    level: "log",
+  },
+};
+
+module.exports = [ extensionConfig, previewConfig ];

@@ -94,7 +94,6 @@ suite("Mermaid Expand Modal", () => {
   // ── Webpack config ────────────────────────────────────────────────────────
 
   test("webpack.config.js exports a browser entry targeting preview.js", () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const config = require(path.join(root, "webpack.config.js")) as unknown[];
     assert.ok(Array.isArray(config), "webpack.config.js should export an array");
     assert.ok(config.length >= 2, `Expected at least 2 entries, got ${config.length}`);

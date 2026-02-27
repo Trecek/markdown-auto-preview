@@ -28,7 +28,7 @@ function scanAndObserve(): void {
  * clear and re-insert the SVG on subsequent updateContent events.
  */
 function observeMermaidContainer(el: Element): void {
-  if (observedSet.has(el)) return; // Observer already attached to this element reference.
+  if (observedSet.has(el)) { return; } // Observer already attached to this element reference.
   observedSet.add(el);
 
   // Mermaid may have already rendered synchronously (e.g. cached).
@@ -56,8 +56,8 @@ function observeMermaidContainer(el: Element): void {
  *  2. Own dedup: if our button is already present (morphdom preserved it), skip.
  */
 function attachExpandButton(container: Element): void {
-  if (container.querySelector(".mermaid-zoom-button") !== null) return;
-  if (container.querySelector(".mermaid-expand-btn") !== null) return;
+  if (container.querySelector(".mermaid-zoom-button") !== null) { return; }
+  if (container.querySelector(".mermaid-expand-btn") !== null) { return; }
 
   const btn = document.createElement("button");
   btn.className = "mermaid-expand-btn";
@@ -69,7 +69,7 @@ function attachExpandButton(container: Element): void {
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     const svg = container.querySelector("svg");
-    if (svg) openOverlay(svg as SVGElement);
+    if (svg) { openOverlay(svg as SVGElement); }
   });
 
   container.appendChild(btn);
@@ -98,21 +98,21 @@ function openOverlay(svg: SVGElement): void {
 
   // REQ-WID-006: dismiss on Escape key.
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (e.key === "Escape") closeOverlay();
+    if (e.key === "Escape") { closeOverlay(); }
   };
   activeCloseHandler = onKeyDown;
   document.addEventListener("keydown", onKeyDown);
 
   // REQ-WID-006: dismiss on click outside the SVG (on the overlay backdrop).
   overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) closeOverlay();
+    if (e.target === overlay) { closeOverlay(); }
   });
 }
 
 /** Remove the active overlay and clean up its event listeners. */
 function closeOverlay(): void {
   const existing = document.querySelector(".mermaid-overlay");
-  if (existing) existing.remove();
+  if (existing) { existing.remove(); }
   if (activeCloseHandler) {
     document.removeEventListener("keydown", activeCloseHandler);
     activeCloseHandler = null;

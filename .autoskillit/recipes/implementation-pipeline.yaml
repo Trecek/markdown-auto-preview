@@ -2,7 +2,7 @@ name: implementation-pipeline
 description: Plan, verify, implement, test, and merge a task end-to-end. Optionally decompose a large document into sequenced groups first. Use when user says "run pipeline", "implement task", or "auto implement".
 summary: (make-groups?) > make-plan > (review-approach?) > dry-walkthrough > implement > test > merge (per group, per plan part)
 
-inputs:
+ingredients:
   task:
     description: Description of what to implement (required when make_groups is false)
     required: false
@@ -151,7 +151,7 @@ steps:
     action: stop
     message: "Pipeline failed — human intervention needed. Check the worktree and plan for details."
 
-constraints:
+kitchen_rules:
   - "Only use AutoSkillit MCP tools during pipeline execution. Do not use native Read, Grep, Glob, Edit, Write, Bash, or Task tools directly."
   - "When a step fails, follow the on_failure route. Do not investigate or diagnose failures yourself — the downstream skill handles diagnosis."
   - "Thread outputs between steps using captured context variables. Do not hardcode paths or values."

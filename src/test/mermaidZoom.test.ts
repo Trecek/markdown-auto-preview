@@ -128,4 +128,50 @@ suite("Mermaid Scroll-Wheel Zoom", () => {
       "Expected .mermaid-is-zoomed selector in mermaid-expand.css"
     );
   });
+
+  // ── Zoom smoothing (Issue 2) ───────────────────────────────────────────────
+
+  test("mermaidExpand.ts defines LOG_ZOOM_STEP instead of multiplicative ZOOM_STEP", () => {
+    const src = fs.readFileSync(path.join(root, "src/preview/mermaidExpand.ts"), "utf8");
+    assert.ok(
+      src.includes("LOG_ZOOM_STEP"),
+      "Expected LOG_ZOOM_STEP constant for log-scale zoom"
+    );
+    assert.ok(
+      !src.includes("ZOOM_STEP = 0.1"),
+      "Expected old ZOOM_STEP = 0.1 to be removed"
+    );
+  });
+
+  test("mermaidExpand.ts uses Math.exp and Math.log for perceptually-linear zoom", () => {
+    const src = fs.readFileSync(path.join(root, "src/preview/mermaidExpand.ts"), "utf8");
+    assert.ok(
+      src.includes("Math.exp") && src.includes("Math.log"),
+      "Expected Math.exp(Math.log(scale) + step) log-scale zoom formula"
+    );
+  });
+
+  test("mermaidExpand.ts uses requestAnimationFrame for batched zoom flushes", () => {
+    const src = fs.readFileSync(path.join(root, "src/preview/mermaidExpand.ts"), "utf8");
+    assert.ok(
+      src.includes("requestAnimationFrame"),
+      "Expected requestAnimationFrame for rAF-batched zoom"
+    );
+  });
+
+  test("mermaidExpand.ts declares a pendingDeltaMap for wheel delta accumulation", () => {
+    const src = fs.readFileSync(path.join(root, "src/preview/mermaidExpand.ts"), "utf8");
+    assert.ok(
+      src.includes("pendingDeltaMap"),
+      "Expected pendingDeltaMap Map for accumulating wheel deltaY"
+    );
+  });
+
+  test("mermaidExpand.ts defines flushZoom for rAF-batched zoom application", () => {
+    const src = fs.readFileSync(path.join(root, "src/preview/mermaidExpand.ts"), "utf8");
+    assert.ok(
+      src.includes("flushZoom"),
+      "Expected flushZoom function for rAF flush of batched wheel events"
+    );
+  });
 });

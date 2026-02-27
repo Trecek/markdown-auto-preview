@@ -194,13 +194,14 @@ suite("Mermaid Scroll-Wheel Zoom", () => {
     );
   });
 
-  test("flushZoom uses magnitude of accumulated delta, not just sign", () => {
+  test("wheel handler normalizes delta at accumulation time — divides by PIXELS_PER_NOTCH before storing in pendingDeltaMap", () => {
     const src = fs.readFileSync(
       path.join(root, "src/preview/mermaidExpand.ts"), "utf8"
     );
     assert.ok(
-      src.includes("PIXELS_PER_NOTCH") && (src.includes("/ PIXELS_PER_NOTCH") || src.includes("/PIXELS_PER_NOTCH")),
-      "flushZoom must divide by PIXELS_PER_NOTCH to scale step proportionally to delta magnitude"
+      src.includes("PIXELS_PER_NOTCH") &&
+        (src.includes("/ PIXELS_PER_NOTCH") || src.includes("/PIXELS_PER_NOTCH")),
+      "normalizeWheelDelta result must be divided by PIXELS_PER_NOTCH at accumulation time (pendingDeltaMap.set)"
     );
   });
 
@@ -211,6 +212,40 @@ suite("Mermaid Scroll-Wheel Zoom", () => {
     assert.ok(
       !src.includes("direction = delta < 0"),
       "sign-only direction assignment must be removed — magnitude is now used"
+    );
+  });
+
+  // ── Zoom sensitivity fix v2 ────────────────────────────────────────────────
+
+  test("LOG_ZOOM_STEP is 0.03 for subtle per-notch zoom feel", () => {
+    const src = fs.readFileSync(path.join(root, "src/preview/mermaidExpand.ts"), "utf8");
+    assert.ok(
+      src.includes("LOG_ZOOM_STEP = 0.03"),
+      "LOG_ZOOM_STEP must be 0.03 (was 0.05)"
+    );
+  });
+
+  test("flushZoom no longer divides by PIXELS_PER_NOTCH (normalization is at accumulation site)", () => {
+    const src = fs.readFileSync(path.join(root, "src/preview/mermaidExpand.ts"), "utf8");
+    assert.ok(
+      !src.includes("delta / PIXELS_PER_NOTCH") && !src.includes("delta/PIXELS_PER_NOTCH"),
+      "flushZoom must not divide by PIXELS_PER_NOTCH — normalization must happen at pendingDeltaMap.set()"
+    );
+  });
+
+  test("wheel handler clamps accumulated notch-units to [-3, 3] as fast-swipe safety guard", () => {
+    const src = fs.readFileSync(path.join(root, "src/preview/mermaidExpand.ts"), "utf8");
+    assert.ok(
+      src.includes("Math.max(-3") && src.includes("Math.min(3,"),
+      "wheel handler must clamp accumulated notch-units to [-3, 3]"
+    );
+  });
+
+  test("debug overlay (zoom-dbg) is removed from wheel handler", () => {
+    const src = fs.readFileSync(path.join(root, "src/preview/mermaidExpand.ts"), "utf8");
+    assert.ok(
+      !src.includes("zoom-dbg"),
+      "Temporary debug overlay (zoom-dbg) must be removed from the wheel handler"
     );
   });
 });

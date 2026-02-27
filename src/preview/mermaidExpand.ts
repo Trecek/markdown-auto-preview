@@ -24,8 +24,8 @@ interface ZoomState { scale: number; tx: number; ty: number; }
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 10;
 // Log-scale zoom exponent per one standard scroll notch (PIXELS_PER_NOTCH px of deltaY).
-// Math.exp(0.05) ≈ 1.051× per notch — small, perceptible-but-subtle zoom increment.
-const LOG_ZOOM_STEP = 0.05;
+// Math.exp(0.03) ≈ 1.030× per notch — subtle, smooth zoom increment.
+const LOG_ZOOM_STEP = 0.03;
 // Expected pixel-equivalent deltaY for one standard mouse wheel notch (DOM_DELTA_PIXEL mode).
 // Used to normalize accumulated delta before computing the zoom exponent, so that the
 // step is device-agnostic and rAF-timing-independent.
@@ -167,13 +167,10 @@ function flushZoom(container: Element): void {
 
   const state = zoomStateMap.get(container) ?? { scale: 1, tx: 0, ty: 0 };
 
-  // Proportional zoom: scale the exponent by normalized delta magnitude.
-  // Splitting one physical notch across N rAF frames produces N smaller steps that
-  // multiply to the same total as a single batched step (log-scale additivity).
-  const normalizedSteps = delta / PIXELS_PER_NOTCH;
+  // delta is already in notch-units (normalized at accumulation time).
   const newScale = Math.max(
     MIN_SCALE,
-    Math.min(MAX_SCALE, Math.exp(Math.log(state.scale) + normalizedSteps * LOG_ZOOM_STEP))
+    Math.min(MAX_SCALE, Math.exp(Math.log(state.scale) + delta * LOG_ZOOM_STEP))
   );
 
   // Cursor-centered translate: keep the diagram point under the cursor fixed.
@@ -225,11 +222,13 @@ function attachZoom(container: Element): void {
     if (!we.ctrlKey) { return; } // REQ-ZOOM-003: pass plain scroll through
     we.preventDefault();         // Capture zoom gesture; suppress page scroll
 
-    // Accumulate deltaY — multiple wheel notches before the next animation frame
-    // will be batched into a single flushZoom call.
+    // Normalize to notch-units at accumulation time, not at flush time.
+    // Dividing here ensures pendingDeltaMap always stores notch-units regardless of
+    // how many rAF-batched events contribute. Clamp to [-3, 3] caps fast-swipe runaway.
+    const notchUnits = normalizeWheelDelta(we.deltaY, we.deltaMode) / PIXELS_PER_NOTCH;
     pendingDeltaMap.set(
       container,
-      (pendingDeltaMap.get(container) ?? 0) + normalizeWheelDelta(we.deltaY, we.deltaMode)
+      Math.max(-3, Math.min(3, (pendingDeltaMap.get(container) ?? 0) + notchUnits))
     );
 
     // Track the latest cursor position for cursor-centered zoom in flushZoom.
